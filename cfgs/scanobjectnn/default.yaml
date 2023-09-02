@@ -44,7 +44,7 @@ optimizer:
  weight_decay: 0.05
 
 sched: cosine
-epochs: 250
+epochs: 2 #250
 warmup_epochs: 0
 min_lr: 1.0e-4
 t_max: 200

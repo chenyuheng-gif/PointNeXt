@@ -15,14 +15,14 @@
 
 # download openpoints
 # git submodule add git@github.com:guochengqian/openpoints.git
-git submodule update --init --recursive
-git submodule update --remote --merge # update to the latest version
+# git submodule update --init --recursive
+# git submodule update --remote --merge # update to the latest version
 
-# install PyTorch
-conda deactivate
-conda env remove --name openpoints
-conda create -n openpoints -y python=3.7 numpy=1.20 numba
-conda activate openpoints
+# # install PyTorch
+# conda deactivate
+# conda env remove --name openpoints
+# conda create -n openpoints -y python=3.7 numpy=1.20 numba
+# conda activate openpoints
 
 # please always double check installation for pytorch and torch-scatter from the official documentation
 conda install -y pytorch=1.10.1 torchvision cudatoolkit=11.3 -c pytorch -c nvidia

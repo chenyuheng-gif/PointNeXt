@@ -59,23 +59,23 @@ def main(gpu, cfg, profile=False):
     # logger
     setup_logger_dist(cfg.log_path, cfg.rank, name=cfg.dataset.common.NAME)
     if cfg.rank == 0 :
-        Wandb.launch(cfg, cfg.wandb.use_wandb)
-        writer = SummaryWriter(log_dir=cfg.run_dir)
+        Wandb.launch(cfg, cfg.wandb.use_wandb) 
+        writer = SummaryWriter(log_dir=cfg.run_dir) #指定日志的存储路径
     else:
         writer = None
     set_random_seed(cfg.seed + cfg.rank, deterministic=cfg.deterministic)
-    torch.backends.cudnn.enabled = True
-    logging.info(cfg)
+    torch.backends.cudnn.enabled = True #启用CuDNN库
+    logging.info(cfg) #它用于将一条信息写入日志文件或打印到控制台
 
-    if not cfg.model.get('criterion_args', False):
+    if not cfg.model.get('criterion_args', False): #这是一个字典的操作，属性存在返回值，不存在返回False
         cfg.model.criterion_args = cfg.criterion_args
-    model = build_model_from_cfg(cfg.model).to(cfg.rank)
-    model_size = cal_model_parm_nums(model)
+    model = build_model_from_cfg(cfg.model).to(cfg.rank) #得到模型
+    model_size = cal_model_parm_nums(model) #计算模型大小
     logging.info(model)
     logging.info('Number of params: %.4f M' % (model_size / 1e6))
     # criterion = build_criterion_from_cfg(cfg.criterion_args).cuda()
     if cfg.model.get('in_channels', None) is None:
-        cfg.model.in_channels = cfg.model.encoder_args.in_channels
+        cfg.model.in_channels = cfg.model.encoder_args.in_channels #设置in_channels
 
     if cfg.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
@@ -87,7 +87,7 @@ def main(gpu, cfg, profile=False):
         logging.info('Using Distributed Data parallel ...')
 
     # optimizer & scheduler
-    optimizer = build_optimizer_from_cfg(model, lr=cfg.lr, **cfg.optimizer)
+    optimizer = build_optimizer_from_cfg(model, lr=cfg.lr, **cfg.optimizer) #创建optimizer
     scheduler = build_scheduler_from_cfg(cfg, optimizer)
 
     # build dataset
@@ -117,7 +117,7 @@ def main(gpu, cfg, profile=False):
                  f"number of points as model input: {cfg.num_points}")
     cfg.classes = cfg.get('classes', None) or val_loader.dataset.classes if hasattr(
         val_loader.dataset, 'classes') else None or np.range(num_classes)
-    validate_fn = eval(cfg.get('val_fn', 'validate'))
+    validate_fn = eval(cfg.get('val_fn', 'validate')) #validate
 
     # optionally resume from a checkpoint
     if cfg.pretrained_path is not None:
@@ -160,11 +160,25 @@ def main(gpu, cfg, profile=False):
     logging.info(f"length of training dataset: {len(train_loader.dataset)}")
 
     # ===> start training
+    """
+    val_macc: 验证集上的平均分类正确率(mean class accuracy)。
+
+    val_oa: 验证集上的总体分类正确率(overall accuracy)。
+
+    val_accs: 一个列表，用于存储验证集上每个类别的分类正确率。
+
+    best_val: 最佳验证性能(通常指最高的验证分类正确率)。
+
+    macc_when_best: 在达到最佳验证性能时的平均类别正确率。
+
+    best_epoch: 达到最佳验证性能的训练轮次(epochs)。
+    
+    """
     val_macc, val_oa, val_accs, best_val, macc_when_best, best_epoch = 0., 0., [], 0., 0., 0
     model.zero_grad()
     for epoch in range(cfg.start_epoch, cfg.epochs + 1):
         if cfg.distributed:
-            train_loader.sampler.set_epoch(epoch)
+            train_loader.sampler.set_epoch(epoch)#在分布式训练中，为了确保每个训练轮次的数据分布都不同，需要设置每个数据加载器（train_loader）的采样器（sampler）的 epoch 属性。这样可以使每个计算节点上的数据加载器在每个轮次中加载不同的数据子集。
         if hasattr(train_loader.dataset, 'epoch'):
             train_loader.dataset.epoch = epoch - 1
         train_loss, train_macc, train_oa, _, _ = \
@@ -232,7 +246,7 @@ def train_one_epoch(model, train_loader, optimizer, scheduler, epoch, cfg):
     num_iter = 0
     for idx, data in pbar:
         for key in data.keys():
-            data[key] = data[key].cuda(non_blocking=True)
+            data[key] = data[key].cuda(non_blocking=True) #将每个值都移动到cuda上
         num_iter += 1
         points = data['x']
         target = data['y']
@@ -240,7 +254,7 @@ def train_one_epoch(model, train_loader, optimizer, scheduler, epoch, cfg):
         from openpoints.dataset import vis_points
         vis_points(data['pos'].cpu().numpy()[0])
         """
-        num_curr_pts = points.shape[1]
+        num_curr_pts = points.shape[1] #shape = (32,2048,4) , (batch_size, num_points, num_features)
         if num_curr_pts > npoints:  # point resampling strategy
             if npoints == 1024:
                 point_all = 1200
@@ -253,22 +267,22 @@ def train_one_epoch(model, train_loader, optimizer, scheduler, epoch, cfg):
             if  points.size(1) < point_all:
                 point_all = points.size(1)
             fps_idx = furthest_point_sample(
-                points[:, :, :3].contiguous(), point_all)
+                points[:, :, :3].contiguous(), point_all) #最远点采样point_all个点.(batch_size, point_all)
             fps_idx = fps_idx[:, np.random.choice(
-                point_all, npoints, False)]
+                point_all, npoints, False)]#从point_all个点中随机采样npoints个点，(batch_size, npoints)
             points = torch.gather(
-                points, 1, fps_idx.unsqueeze(-1).long().expand(-1, -1, points.shape[-1]))
+                points, 1, fps_idx.unsqueeze(-1).long().expand(-1, -1, points.shape[-1]))#根据最远点采样得到的索引 fps_idx，从原始的点云数据 points 中选择和收集对应的点，形成一个新的点云数据。
 
         data['pos'] = points[:, :, :3].contiguous()
-        data['x'] = points[:, :, :cfg.model.in_channels].transpose(1, 2).contiguous()
-        logits, loss = model.get_logits_loss(data, target) if not hasattr(model, 'module') else model.module.get_logits_loss(data, target)
+        data['x'] = points[:, :, :cfg.model.in_channels].transpose(1, 2).contiguous()#(32,4,1024),(batch_size, num_channels, num_points)
+        logits, loss = model.get_logits_loss(data, target) if not hasattr(model, 'module') else model.module.get_logits_loss(data, target)#logits代表推理的结果，loss代表损失函数的值
         loss.backward()
 
         # optimize
         if num_iter == cfg.step_per_update:
             if cfg.get('grad_norm_clip') is not None and cfg.grad_norm_clip > 0.:
                 torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), cfg.grad_norm_clip, norm_type=2)
+                    model.parameters(), cfg.grad_norm_clip, norm_type=2) #执行梯度裁剪
             num_iter = 0
             optimizer.step()
             model.zero_grad()
@@ -277,7 +291,7 @@ def train_one_epoch(model, train_loader, optimizer, scheduler, epoch, cfg):
 
         # update confusion matrix
         cm.update(logits.argmax(dim=1), target)
-        loss_meter.update(loss.item())
+        loss_meter.update(loss.item()) #更新loss_meter
         if idx % cfg.print_freq == 0:
             pbar.set_description(f"Train Epoch [{epoch}/{cfg.epochs}] "
                                  f"Loss {loss_meter.val:.3f} Acc {cm.overall_accuray:.2f}")
